@@ -1,0 +1,60 @@
+---
+- name: Get install directory
+  set_fact: install_dir="/var/www/{{ install_dir_name }}"
+
+- name: Add / replace default SSL config
+  template:
+    src: ssl.conf.j2
+    dest: "{{ install_default_ssl_conf_file }}"
+    force: true
+
+- name: Add virtual host
+  template:
+    src: vhost.conf.j2
+    dest: "{{ install_conf_scan_folder }}/{{ install_dir_name }}.conf"
+
+- name: Zap old git checkout in /tmp
+  file:
+    path: "/tmp/{{ install_dir_name }}"
+    state: absent
+
+- name: Check out site git repo to /tmp, using SSH
+  git:
+    repo: "{{ install_repo_ssh_uri }}"
+    version: "{{ install_repo_version }}"
+    dest: "/tmp/{{ install_dir_name }}"
+    clone: true
+    accept_hostkey: true
+  become: false
+
+- name: Zap old installed website
+  file:
+    path: "{{ install_dir }}"
+    state: absent
+
+- name: "Copy repo checkout to {{ install_dir }}"
+  command: "mv /tmp/{{ install_dir_name }} /var/www/"
+  changed_when: false
+
+- name: Install apache modules
+  apache2_module:
+    state: present
+    name: "{{ item }}"
+  with_items:
+    - proxy
+
+- include_role:
+    name: geerlingguy.docker
+
+- name: Add to group
+  user:
+    name: apache
+    groups: docker
+    append: yes
+
+- name: Enable Docker services
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - docker
