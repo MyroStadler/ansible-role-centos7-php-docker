@@ -36,6 +36,28 @@
   command: "mv /tmp/{{ install_dir_name }} /var/www/"
   changed_when: false
 
+- name: Add standard .env file
+  template:
+    src: env.j2
+    dest: "{{ install_dir }}/.env"
+  when: install_env_lines is defined
+
+- name: Add lines to .env file
+  lineinfile:
+    dest: "{{ install_dir }}/.env"
+    line: "{{ item.name }}={{ item.value }}"
+  with_items: "{{ install_env_lines }}"
+  when: install_env_lines is defined and install_env_lines|length > 0
+  no_log: true
+
+- name: "Ensure {{ ansible_user }} is the owner of and permissions are correct for {{ install_dir }}"
+  file:
+    dest: "{{ install_dir }}"
+    owner: "{{ ansible_user }}"
+    group: apache
+    mode: u=rwX,g=rX,o=rX
+    recurse: true
+
 - name: Install apache modules
   apache2_module:
     state: present
@@ -46,15 +68,18 @@
 - include_role:
     name: geerlingguy.docker
 
-- name: Add to group
-  user:
-    name: apache
-    groups: docker
-    append: yes
-
 - name: Enable Docker services
   service:
     name: "{{ item }}"
     enabled: true
   with_items:
     - docker
+
+# this wouldn't work properly
+- name: Make
+  command:
+    chdir: "{{ install_dir }}"
+    cmd: "make {{ item }}"
+  with_items: "{{ install_make_targets }}"
+  when: install_make_targets is defined
+  changed_when: false
